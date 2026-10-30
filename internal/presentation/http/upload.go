@@ -85,35 +85,45 @@ func sanitizeFilename(name string) string {
 	return out
 }
 
-func (h *Handlers) saveUpload(w http.ResponseWriter, r *http.Request, kindName string) (string, bool) {
+// Duration priority (locked): a MANUAL duration_seconds set by the admin
+// (nonzero, via episode create/update) always wins over the automatic probe.
+// The probe fills the duration ONLY when the episode has none yet (0).
+// To re-probe after a manual value was set, clear the manual value to 0
+// first, then re-upload. External links are never probed: their duration
+// comes from the manual field only, and stays 0 (unknown) when unset —
+// clients hide the duration instead of showing "0:00".
+//
+// saveUpload stores the file and returns the relative API path, the on-disk
+// path (needed to probe video duration), and success.
+func (h *Handlers) saveUpload(w http.ResponseWriter, r *http.Request, kindName string) (string, string, bool) {
 	kind, ok := uploadKinds[kindName]
 	if !ok {
 		writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "Jenis upload tidak valid."))
-		return "", false
+		return "", "", false
 	}
 	// Cap the whole request body slightly above the file limit.
-	r.Body = http.MaxBytesReader(w, r.Body, kind.maxBytes+ (1 << 20))
+	r.Body = http.MaxBytesReader(w, r.Body, kind.maxBytes+(1<<20))
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeErr(w, domain.ErrBadRequest("FILE_TOO_LARGE",
 			fmt.Sprintf("Ukuran file melebihi batas %d MB.", kind.maxBytes>>20)))
-		return "", false
+		return "", "", false
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "Field file (multipart) wajib diisi."))
-		return "", false
+		return "", "", false
 	}
 	defer file.Close()
 	if header.Size > kind.maxBytes {
 		writeErr(w, domain.ErrBadRequest("FILE_TOO_LARGE",
 			fmt.Sprintf("Ukuran file melebihi batas %d MB.", kind.maxBytes>>20)))
-		return "", false
+		return "", "", false
 	}
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if !kind.extensions[ext] {
 		writeErr(w, domain.ErrBadRequest("INVALID_FILE_TYPE",
 			"Tipe file tidak diizinkan untuk upload ini."))
-		return "", false
+		return "", "", false
 	}
 	if ct := header.Header.Get("Content-Type"); ct != "" && ct != "application/octet-stream" {
 		allowed := false
@@ -126,7 +136,7 @@ func (h *Handlers) saveUpload(w http.ResponseWriter, r *http.Request, kindName s
 		if !allowed {
 			writeErr(w, domain.ErrBadRequest("INVALID_FILE_TYPE",
 				"Tipe file tidak diizinkan untuk upload ini."))
-			return "", false
+			return "", "", false
 		}
 	}
 	if h.MediaDir == "" {
@@ -135,7 +145,7 @@ func (h *Handlers) saveUpload(w http.ResponseWriter, r *http.Request, kindName s
 	dir := filepath.Join(h.MediaDir, kind.subdir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		writeErr(w, err)
-		return "", false
+		return "", "", false
 	}
 	safe := sanitizeFilename(header.Filename)
 	unique := fmt.Sprintf("%d-%s", time.Now().UnixNano(), safe)
@@ -143,21 +153,21 @@ func (h *Handlers) saveUpload(w http.ResponseWriter, r *http.Request, kindName s
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		writeErr(w, err)
-		return "", false
+		return "", "", false
 	}
 	if _, err := io.Copy(dst, file); err != nil {
 		_ = dst.Close()
 		_ = os.Remove(dstPath)
 		writeErr(w, err)
-		return "", false
+		return "", "", false
 	}
 	if err := dst.Close(); err != nil {
 		_ = os.Remove(dstPath)
 		writeErr(w, err)
-		return "", false
+		return "", "", false
 	}
 	// Relative API path stored in the entity (see header comment).
-	return "media/" + kind.subdir + "/" + unique, true
+	return "media/" + kind.subdir + "/" + unique, dstPath, true
 }
 
 func (h *Handlers) UploadSeriesCover(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +181,7 @@ func (h *Handlers) UploadSeriesCover(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	rel, ok := h.saveUpload(w, r, "cover")
+	rel, _, ok := h.saveUpload(w, r, "cover")
 	if !ok {
 		return
 	}
@@ -186,24 +196,29 @@ func (h *Handlers) UploadSeriesCover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UploadEpisodeVideo(w http.ResponseWriter, r *http.Request) {
-	h.uploadEpisodeField(w, r, "video", func(ep *domain.Episode, rel string) {
+	h.uploadEpisodeField(w, r, "video", func(ep *domain.Episode, rel, diskPath string) {
 		ep.VideoURL = rel
+		if ep.DurationSeconds == 0 {
+			if d := probeVideoDuration(diskPath); d > 0 {
+				ep.DurationSeconds = d
+			}
+		}
 	})
 }
 
 func (h *Handlers) UploadEpisodeSubtitle(w http.ResponseWriter, r *http.Request) {
-	h.uploadEpisodeField(w, r, "subtitle", func(ep *domain.Episode, rel string) {
+	h.uploadEpisodeField(w, r, "subtitle", func(ep *domain.Episode, rel, _ string) {
 		ep.SubtitleURL = &rel
 	})
 }
 
 func (h *Handlers) UploadEpisodeThumbnail(w http.ResponseWriter, r *http.Request) {
-	h.uploadEpisodeField(w, r, "thumbnail", func(ep *domain.Episode, rel string) {
+	h.uploadEpisodeField(w, r, "thumbnail", func(ep *domain.Episode, rel, _ string) {
 		ep.ThumbnailURL = &rel
 	})
 }
 
-func (h *Handlers) uploadEpisodeField(w http.ResponseWriter, r *http.Request, kindName string, set func(*domain.Episode, string)) {
+func (h *Handlers) uploadEpisodeField(w http.ResponseWriter, r *http.Request, kindName string, set func(*domain.Episode, string, string)) {
 	id, ok := paramID(r)
 	if !ok {
 		writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "ID episode tidak valid."))
@@ -214,18 +229,22 @@ func (h *Handlers) uploadEpisodeField(w http.ResponseWriter, r *http.Request, ki
 		writeErr(w, err)
 		return
 	}
-	rel, ok := h.saveUpload(w, r, kindName)
+	rel, diskPath, ok := h.saveUpload(w, r, kindName)
 	if !ok {
 		return
 	}
-	set(ep, rel)
+	set(ep, rel, diskPath)
 	if err := h.Catalog.UpdateEpisode(r.Context(), ep); err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeOK(w, http.StatusOK, map[string]interface{}{
+	resp := map[string]interface{}{
 		"episode_id": id, uploadKinds[kindName].field: rel, "url": rel,
-	}, nil)
+	}
+	if kindName == "video" {
+		resp["duration_seconds"] = ep.DurationSeconds
+	}
+	writeOK(w, http.StatusOK, resp, nil)
 }
 
 // storeSeries fetches a series for admin mutation (genres preserved on update

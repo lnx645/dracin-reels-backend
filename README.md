@@ -131,6 +131,22 @@ Viewer demo bersaldo 200 koin. Series seed: **CINTA SANG PENGUASA QIN**
 episode 3/4/5 seharga 50/80/100 koin; genre Romansa, Balas Dendam,
 Fantasi, Misteri; 4 paket koin; 3 tugas hadiah (check-in 10 koin/hari).
 
+## Durasi episode (otomatis + fallback manual)
+
+- **Upload video:** server membaca durasi dari file itu sendiri (parse header
+  MP4/MOV `moov/mvhd` atau EBML MKV best-effort, murni di Go — tanpa
+  ffprobe) dan menyimpan ke `duration_seconds` secara otomatis. Upload
+  response video juga memuat `duration_seconds`.
+- **Prioritas (dikunci):** nilai **manual** admin (nonzero, lewat
+  create/update episode) selalu menang atas nilai otomatis. Probe hanya
+  mengisi bila durasi masih 0. Untuk mem-probe ulang setelah nilai manual
+  terisi, kosongkan dulu nilai manual menjadi 0 lalu upload ulang.
+- **Link eksternal:** durasi tidak pernah ditebak — pakai nilai manual bila
+  admin mengisi, bila kosong tetap 0 (artinya "tidak diketahui"; klien
+  menyembunyikan durasi, bukan menampilkan "0:00").
+- **Tidak didukung:** file tanpa header durasi yang bisa diparse (mis.
+  MKV tanpa elemen Duration) → durasi tetap 0, bukan angka karangan.
+
 ## Deploy VPS (ringkas)
 
 Lokasi: `/opt/dracin-reels-backend`, service systemd

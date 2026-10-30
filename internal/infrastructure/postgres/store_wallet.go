@@ -406,7 +406,7 @@ func (s *Store) RemoveBookmark(ctx context.Context, userID, seriesID int64) erro
 
 func (s *Store) ListBookmarks(ctx context.Context, userID int64) ([]domain.Series, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT sr.id, sr.title, sr.description, sr.cover_url, sr.status,
+		`SELECT sr.id, sr.title, sr.description, sr.tagline, sr.cover_url, sr.status,
 		 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = sr.id AND e.status='published'),
 		 sr.free_episode_count, sr.rating, sr.created_at, sr.updated_at
 		 FROM bookmarks b JOIN series sr ON sr.id = b.series_id

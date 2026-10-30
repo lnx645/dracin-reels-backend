@@ -91,6 +91,11 @@ func (s *Store) DeleteGenre(ctx context.Context, id int64) error {
 
 // --- Series ---
 
+// total_episode is always computed as COUNT of published episodes,
+// never read from the stored series.total_episode column (which goes stale
+// whenever episodes are added/removed). rating has no rating/review
+// mechanism behind it, so the stored value is returned as-is (0 = no rating
+// data) and never fabricated.
 func scanSeries(rows *sql.Rows) (domain.Series, error) {
 	var s domain.Series
 	var cover sql.NullString
@@ -148,7 +153,8 @@ func (s *Store) ListSeries(ctx context.Context, genreSlug, status string, page, 
 	}
 	args = append(args, limit, (page-1)*limit)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, title, description, cover_url, status, total_episode,
+		`SELECT id, title, description, cover_url, status,
+		 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = series.id AND e.status='published'),
 		 free_episode_count, rating, created_at, updated_at FROM series `+where+
 			` ORDER BY created_at DESC LIMIT $`+itoa(len(args)-1)+` OFFSET $`+itoa(len(args)), args...)
 	if err != nil {
@@ -195,7 +201,8 @@ func (s *Store) GetSeries(ctx context.Context, id int64) (*domain.Series, error)
 	ser := &domain.Series{}
 	var cover sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, title, description, cover_url, status, total_episode,
+		`SELECT id, title, description, cover_url, status,
+		 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = series.id AND e.status='published'),
 		 free_episode_count, rating, created_at, updated_at FROM series WHERE id=$1`, id,
 	).Scan(&ser.ID, &ser.Title, &ser.Description, &cover, &ser.Status,
 		&ser.TotalEpisode, &ser.FreeEpisodeCount, &ser.Rating, &ser.CreatedAt, &ser.UpdatedAt)

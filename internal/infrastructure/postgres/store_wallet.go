@@ -358,7 +358,7 @@ func (s *Store) ContinueWatching(ctx context.Context, userID int64, limit int) (
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT wp.user_id, wp.episode_id, wp.position_seconds, wp.finished, wp.last_watched_at,
 		 e.id, e.series_id, e.number, e.title, e.description, e.video_url, e.duration_seconds, e.coin_price, e.status,
-		 sr.id, sr.title, sr.description, sr.cover_url, sr.status, sr.total_episode, sr.free_episode_count, sr.rating
+		 sr.id, sr.title, sr.description, sr.cover_url, sr.status, (SELECT COUNT(*) FROM episodes e WHERE e.series_id = sr.id AND e.status='published'), sr.free_episode_count, sr.rating
 		 FROM watch_progress wp
 		 JOIN episodes e ON e.id = wp.episode_id
 		 JOIN series sr ON sr.id = e.series_id
@@ -404,7 +404,8 @@ func (s *Store) RemoveBookmark(ctx context.Context, userID, seriesID int64) erro
 
 func (s *Store) ListBookmarks(ctx context.Context, userID int64) ([]domain.Series, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT sr.id, sr.title, sr.description, sr.cover_url, sr.status, sr.total_episode,
+		`SELECT sr.id, sr.title, sr.description, sr.cover_url, sr.status,
+		 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = sr.id AND e.status='published'),
 		 sr.free_episode_count, sr.rating, sr.created_at, sr.updated_at
 		 FROM bookmarks b JOIN series sr ON sr.id = b.series_id
 		 WHERE b.user_id=$1 ORDER BY b.created_at DESC`, userID)

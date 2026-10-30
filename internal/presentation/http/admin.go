@@ -9,6 +9,7 @@ import (
 type seriesPayload struct {
 	Title            string  `json:"title"`
 	Description      string  `json:"description"`
+	Tagline          string  `json:"tagline"`
 	CoverURL         *string `json:"cover_url"`
 	Status           string  `json:"status"`
 	TotalEpisode     int     `json:"total_episode"`
@@ -45,7 +46,7 @@ func (h *Handlers) AdminCreateSeries(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	s := &domain.Series{Title: req.Title, Description: req.Description, CoverURL: req.CoverURL,
+	s := &domain.Series{Title: req.Title, Description: req.Description, Tagline: req.Tagline, CoverURL: req.CoverURL,
 		Status: req.Status, TotalEpisode: req.TotalEpisode, FreeEpisodeCount: req.FreeEpisodeCount, Rating: req.Rating}
 	if err := h.Catalog.CreateSeries(r.Context(), s, req.GenreIDs); err != nil {
 		writeErr(w, err)
@@ -64,7 +65,7 @@ func (h *Handlers) AdminUpdateSeries(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	s := &domain.Series{ID: id, Title: req.Title, Description: req.Description, CoverURL: req.CoverURL,
+	s := &domain.Series{ID: id, Title: req.Title, Description: req.Description, Tagline: req.Tagline, CoverURL: req.CoverURL,
 		Status: req.Status, TotalEpisode: req.TotalEpisode, FreeEpisodeCount: req.FreeEpisodeCount, Rating: req.Rating}
 	if err := h.Catalog.UpdateSeries(r.Context(), s, req.GenreIDs); err != nil {
 		writeErr(w, err)

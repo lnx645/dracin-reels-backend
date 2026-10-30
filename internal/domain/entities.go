@@ -29,11 +29,11 @@ const (
 
 // Coin transaction types.
 const (
-	TxCheckin   = "checkin"
-	TxTask      = "task"
-	TxPurchase  = "purchase"
-	TxUnlock    = "unlock"
-	TxReward    = "reward"
+	TxCheckin  = "checkin"
+	TxTask     = "task"
+	TxPurchase = "purchase"
+	TxUnlock   = "unlock"
+	TxReward   = "reward"
 )
 
 // Reward task types.
@@ -60,17 +60,18 @@ type Genre struct {
 }
 
 type Series struct {
-	ID                int64     `json:"id"`
-	Title             string    `json:"title"`
-	Description       string    `json:"description"`
-	CoverURL          *string   `json:"cover_url"`
-	Status            string    `json:"status"`
-	TotalEpisode      int       `json:"total_episode"`
-	FreeEpisodeCount  int       `json:"free_episode_count"`
-	Rating            float64   `json:"rating"`
-	Genres            []Genre   `json:"genres,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID               int64     `json:"id"`
+	Title            string    `json:"title"`
+	Description      string    `json:"description"`
+	Tagline          string    `json:"tagline"`
+	CoverURL         *string   `json:"cover_url"`
+	Status           string    `json:"status"`
+	TotalEpisode     int       `json:"total_episode"`
+	FreeEpisodeCount int       `json:"free_episode_count"`
+	Rating           float64   `json:"rating"`
+	Genres           []Genre   `json:"genres,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type Episode struct {

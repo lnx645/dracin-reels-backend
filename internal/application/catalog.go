@@ -31,8 +31,8 @@ type CatalogService struct{ store Store }
 
 func NewCatalogService(store Store) *CatalogService { return &CatalogService{store: store} }
 
-func (s *CatalogService) ListSeries(ctx context.Context, genreSlug string, page, limit int) ([]domain.Series, int, error) {
-	return s.store.ListSeries(ctx, genreSlug, domain.StatusPublished, page, limit)
+func (s *CatalogService) ListSeries(ctx context.Context, genreSlug string, genreID int64, page, limit int) ([]domain.Series, int, error) {
+	return s.store.ListSeries(ctx, genreSlug, genreID, domain.StatusPublished, page, limit)
 }
 
 func (s *CatalogService) GetSeries(ctx context.Context, id int64, userID int64, isAdmin bool) (*domain.Series, []domain.Episode, error) {
@@ -134,7 +134,7 @@ func (s *CatalogService) ListGenres(ctx context.Context) ([]domain.Genre, error)
 // --- Admin catalog ---
 
 func (s *CatalogService) AdminListSeries(ctx context.Context, page, limit int) ([]domain.Series, int, error) {
-	return s.store.ListSeries(ctx, "", "", page, limit)
+	return s.store.ListSeries(ctx, "", 0, "", page, limit)
 }
 
 func (s *CatalogService) CreateSeries(ctx context.Context, series *domain.Series, genreIDs []int64) error {

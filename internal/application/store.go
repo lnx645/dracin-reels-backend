@@ -22,7 +22,7 @@ type Store interface {
 	DeleteGenre(ctx context.Context, id int64) error
 
 	// Series
-	ListSeries(ctx context.Context, genreSlug, status string, page, limit int) ([]domain.Series, int, error)
+	ListSeries(ctx context.Context, genreSlug string, genreID int64, status string, page, limit int) ([]domain.Series, int, error)
 	GetSeries(ctx context.Context, id int64) (*domain.Series, error)
 	CreateSeries(ctx context.Context, s *domain.Series, genreIDs []int64) error
 	UpdateSeries(ctx context.Context, s *domain.Series, genreIDs []int64) error

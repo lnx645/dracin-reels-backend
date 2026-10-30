@@ -70,7 +70,16 @@ func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) ListSeries(w http.ResponseWriter, r *http.Request) {
 	page, limit := pagination(r)
-	list, total, err := h.Catalog.ListSeries(r.Context(), r.URL.Query().Get("genre"), page, limit)
+	var genreID int64
+	if raw := r.URL.Query().Get("genre_id"); raw != "" {
+		id, err := strconv.Atoi(raw)
+		if err != nil || id <= 0 {
+			writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "genre_id tidak valid."))
+			return
+		}
+		genreID = int64(id)
+	}
+	list, total, err := h.Catalog.ListSeries(r.Context(), r.URL.Query().Get("genre"), genreID, page, limit)
 	if err != nil {
 		writeErr(w, err)
 		return

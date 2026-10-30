@@ -99,7 +99,7 @@ func (s *Store) DeleteGenre(ctx context.Context, id int64) error {
 func scanSeries(rows *sql.Rows) (domain.Series, error) {
 	var s domain.Series
 	var cover sql.NullString
-	err := rows.Scan(&s.ID, &s.Title, &s.Description, &cover, &s.Status,
+	err := rows.Scan(&s.ID, &s.Title, &s.Description, &s.Tagline, &cover, &s.Status,
 		&s.TotalEpisode, &s.FreeEpisodeCount, &s.Rating, &s.CreatedAt, &s.UpdatedAt)
 	s.CoverURL = strPtr(cover)
 	return s, err
@@ -125,7 +125,7 @@ func (s *Store) attachGenres(ctx context.Context, series *domain.Series) error {
 	return rows.Err()
 }
 
-func (s *Store) ListSeries(ctx context.Context, genreSlug, status string, page, limit int) ([]domain.Series, int, error) {
+func (s *Store) ListSeries(ctx context.Context, genreSlug string, genreID int64, status string, page, limit int) ([]domain.Series, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -134,9 +134,13 @@ func (s *Store) ListSeries(ctx context.Context, genreSlug, status string, page, 
 	}
 	var conds []string
 	var args []interface{}
+	if genreID > 0 {
+		args = append(args, genreID)
+		conds = append(conds, `EXISTS (SELECT 1 FROM series_genres sg WHERE sg.series_id = series.id AND sg.genre_id = $`+itoa(len(args))+`)`)
+	}
 	if genreSlug != "" {
 		args = append(args, genreSlug)
-		conds = append(conds, `EXISTS (SELECT 1 FROM series_genres sg JOIN genres g ON g.id = sg.genre_id WHERE sg.series_id = series.id AND g.slug = $`+itoa(len(args))+`)`)
+		conds = append(conds, `EXISTS (SELECT 1 FROM series_genres sg JOIN genres g ON g.id = sg.genre_id WHERE sg.series_id = series.id AND (g.slug = $`+itoa(len(args))+` OR LOWER(g.name) = LOWER($`+itoa(len(args))+`)))`)
 	}
 	if status != "" {
 		args = append(args, status)
@@ -153,7 +157,7 @@ func (s *Store) ListSeries(ctx context.Context, genreSlug, status string, page, 
 	}
 	args = append(args, limit, (page-1)*limit)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, title, description, cover_url, status,
+		`SELECT id, title, description, tagline, cover_url, status,
 		 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = series.id AND e.status='published'),
 		 free_episode_count, rating, created_at, updated_at FROM series `+where+
 			` ORDER BY created_at DESC LIMIT $`+itoa(len(args)-1)+` OFFSET $`+itoa(len(args)), args...)
@@ -201,10 +205,10 @@ func (s *Store) GetSeries(ctx context.Context, id int64) (*domain.Series, error)
 	ser := &domain.Series{}
 	var cover sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, title, description, cover_url, status,
+		`SELECT id, title, description, tagline, cover_url, status,
 		 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = series.id AND e.status='published'),
 		 free_episode_count, rating, created_at, updated_at FROM series WHERE id=$1`, id,
-	).Scan(&ser.ID, &ser.Title, &ser.Description, &cover, &ser.Status,
+	).Scan(&ser.ID, &ser.Title, &ser.Description, &ser.Tagline, &cover, &ser.Status,
 		&ser.TotalEpisode, &ser.FreeEpisodeCount, &ser.Rating, &ser.CreatedAt, &ser.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -223,9 +227,9 @@ func (s *Store) CreateSeries(ctx context.Context, ser *domain.Series, genreIDs [
 	}
 	defer tx.Rollback()
 	err = tx.QueryRowContext(ctx,
-		`INSERT INTO series (title, description, cover_url, status, total_episode, free_episode_count, rating)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at, updated_at`,
-		ser.Title, ser.Description, nullString(ser.CoverURL), ser.Status,
+		`INSERT INTO series (title, description, tagline, cover_url, status, total_episode, free_episode_count, rating)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, created_at, updated_at`,
+		ser.Title, ser.Description, ser.Tagline, nullString(ser.CoverURL), ser.Status,
 		ser.TotalEpisode, ser.FreeEpisodeCount, ser.Rating,
 	).Scan(&ser.ID, &ser.CreatedAt, &ser.UpdatedAt)
 	if err != nil {
@@ -247,9 +251,9 @@ func (s *Store) UpdateSeries(ctx context.Context, ser *domain.Series, genreIDs [
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE series SET title=$1, description=$2, cover_url=$3, status=$4,
-		 total_episode=$5, free_episode_count=$6, rating=$7, updated_at=now() WHERE id=$8`,
-		ser.Title, ser.Description, nullString(ser.CoverURL), ser.Status,
+		`UPDATE series SET title=$1, description=$2, tagline=$3, cover_url=$4, status=$5,
+		 total_episode=$6, free_episode_count=$7, rating=$8, updated_at=now() WHERE id=$9`,
+		ser.Title, ser.Description, ser.Tagline, nullString(ser.CoverURL), ser.Status,
 		ser.TotalEpisode, ser.FreeEpisodeCount, ser.Rating, ser.ID); err != nil {
 		return err
 	}

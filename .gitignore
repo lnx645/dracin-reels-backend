@@ -1,0 +1,4 @@
+.env
+dracin-reels-backend
+/media/
+*.log

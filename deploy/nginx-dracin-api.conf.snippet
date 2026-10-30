@@ -1,0 +1,12 @@
+# Snippet to add INSIDE the server { listen 8095; ... } block.
+# Back up the nginx config first, then run `nginx -t` before reload.
+location /dracin-api/ {
+    proxy_pass http://127.0.0.1:8100/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Video uploads (admin) can be large; allow staging uploads.
+    client_max_body_size 550m;
+}

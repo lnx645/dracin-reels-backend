@@ -1,0 +1,14 @@
+[Unit]
+Description=Dracin Reels Backend API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dracin-reels-backend
+ExecStart=/opt/dracin-reels-backend/dracin-reels-backend
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/opt/dracin-reels-backend/.env
+
+[Install]
+WantedBy=multi-user.target

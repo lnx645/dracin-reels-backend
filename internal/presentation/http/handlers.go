@@ -84,6 +84,11 @@ func (h *Handlers) ListSeries(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	userID, _ := userFromCtx(r.Context())
+	if err := h.Catalog.AttachRatings(r.Context(), list, userID); err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeOK(w, http.StatusOK, list, pageMeta(page, limit, total))
 }
 
@@ -98,6 +103,14 @@ func (h *Handlers) GetSeries(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, err)
 		return
+	}
+	{
+		list := []domain.Series{*series}
+		if err := h.Catalog.AttachRatings(r.Context(), list, userID); err != nil {
+			writeErr(w, err)
+			return
+		}
+		*series = list[0]
 	}
 	writeOK(w, http.StatusOK, map[string]interface{}{"series": series, "episodes": eps}, nil)
 }
@@ -338,12 +351,84 @@ func (h *Handlers) ListComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, limit := pagination(r)
-	list, total, err := h.Social.Comments(r.Context(), id, page, limit)
+	userID, _ := userFromCtx(r.Context())
+	list, total, err := h.Social.Comments(r.Context(), id, userID, page, limit)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	writeOK(w, http.StatusOK, list, pageMeta(page, limit, total))
+}
+
+// RateSeries creates or replaces the caller star rating for a series.
+func (h *Handlers) RateSeries(w http.ResponseWriter, r *http.Request) {
+	id, ok := paramID(r)
+	if !ok {
+		writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "ID series tidak valid."))
+		return
+	}
+	var req struct {
+		Stars int `json:"stars"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	userID, _ := userFromCtx(r.Context())
+	summary, err := h.Social.RateSeries(r.Context(), userID, id, req.Stars)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, summary, nil)
+}
+
+// GetSeriesRatings returns the computed rating summary of a series.
+// Anonymous callers get average + count; logged-in callers also get their own stars.
+func (h *Handlers) GetSeriesRatings(w http.ResponseWriter, r *http.Request) {
+	id, ok := paramID(r)
+	if !ok {
+		writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "ID series tidak valid."))
+		return
+	}
+	userID, _ := userFromCtx(r.Context())
+	summary, err := h.Social.SeriesRating(r.Context(), id, userID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, summary, nil)
+}
+
+// LikeComment likes a comment (id = comment id, mirroring /likes/{id}).
+func (h *Handlers) LikeComment(w http.ResponseWriter, r *http.Request) {
+	id, ok := paramID(r)
+	if !ok {
+		writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "ID komentar tidak valid."))
+		return
+	}
+	userID, _ := userFromCtx(r.Context())
+	status, err := h.Social.LikeComment(r.Context(), userID, id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, status, nil)
+}
+
+// UnlikeComment removes the caller like on a comment.
+func (h *Handlers) UnlikeComment(w http.ResponseWriter, r *http.Request) {
+	id, ok := paramID(r)
+	if !ok {
+		writeErr(w, domain.ErrBadRequest("VALIDATION_ERROR", "ID komentar tidak valid."))
+		return
+	}
+	userID, _ := userFromCtx(r.Context())
+	status, err := h.Social.UnlikeComment(r.Context(), userID, id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeOK(w, http.StatusOK, status, nil)
 }
 
 func (h *Handlers) AddComment(w http.ResponseWriter, r *http.Request) {

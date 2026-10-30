@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/lnx645/dracin-reels-backend/internal/domain"
 )
 
@@ -439,7 +441,7 @@ func (s *Store) RemoveLike(ctx context.Context, userID, episodeID int64) error {
 	return err
 }
 
-func (s *Store) ListComments(ctx context.Context, episodeID int64, page, limit int) ([]domain.Comment, int, error) {
+func (s *Store) ListComments(ctx context.Context, episodeID, userID int64, page, limit int) ([]domain.Comment, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -452,10 +454,12 @@ func (s *Store) ListComments(ctx context.Context, episodeID int64, page, limit i
 		return nil, 0, err
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT c.id, c.user_id, c.episode_id, c.body, c.created_at, u.name
+		`SELECT c.id, c.user_id, c.episode_id, c.body, c.created_at, u.name,
+		 (SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = c.id),
+		 EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2)
 		 FROM comments c JOIN users u ON u.id = c.user_id
-		 WHERE c.episode_id=$1 ORDER BY c.created_at ASC LIMIT $2 OFFSET $3`,
-		episodeID, limit, (page-1)*limit)
+		 WHERE c.episode_id=$1 ORDER BY c.created_at ASC LIMIT $3 OFFSET $4`,
+		episodeID, userID, limit, (page-1)*limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -463,7 +467,7 @@ func (s *Store) ListComments(ctx context.Context, episodeID int64, page, limit i
 	out := []domain.Comment{}
 	for rows.Next() {
 		var c domain.Comment
-		if err := rows.Scan(&c.ID, &c.UserID, &c.EpisodeID, &c.Body, &c.CreatedAt, &c.UserName); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.EpisodeID, &c.Body, &c.CreatedAt, &c.UserName, &c.LikeCount, &c.LikedByMe); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, c)
@@ -476,4 +480,132 @@ func (s *Store) CreateComment(ctx context.Context, c *domain.Comment) error {
 		`INSERT INTO comments (user_id, episode_id, body) VALUES ($1,$2,$3) RETURNING id, created_at`,
 		c.UserID, c.EpisodeID, c.Body,
 	).Scan(&c.ID, &c.CreatedAt)
+}
+
+// --- Series ratings (one row per user per series) ---
+
+func (s *Store) SetSeriesRating(ctx context.Context, userID, seriesID int64, stars int) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO series_ratings (user_id, series_id, stars) VALUES ($1,$2,$3)
+		 ON CONFLICT (user_id, series_id) DO UPDATE SET stars = EXCLUDED.stars, updated_at = now()`,
+		userID, seriesID, stars)
+	return err
+}
+
+func (s *Store) SeriesRatingSummary(ctx context.Context, seriesID, userID int64) (domain.SeriesRatingSummary, error) {
+	out := domain.SeriesRatingSummary{SeriesID: seriesID}
+	var avg sql.NullFloat64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*), AVG(stars) FROM series_ratings WHERE series_id=$1`, seriesID,
+	).Scan(&out.RatingCount, &avg); err != nil {
+		return out, err
+	}
+	if out.RatingCount > 0 && avg.Valid {
+		v := avg.Float64
+		out.AverageRating = &v
+	}
+	if userID > 0 {
+		var stars int
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT stars FROM series_ratings WHERE series_id=$1 AND user_id=$2`, seriesID, userID,
+		).Scan(&stars); err == nil {
+			out.UserStars = &stars
+		} else if err != sql.ErrNoRows {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) SeriesRatingsBulk(ctx context.Context, seriesIDs []int64, userID int64) (map[int64]domain.SeriesRatingSummary, error) {
+	out := map[int64]domain.SeriesRatingSummary{}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT series_id, COUNT(*), AVG(stars) FROM series_ratings
+		 WHERE series_id = ANY($1) GROUP BY series_id`, pq.Array(seriesIDs))
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var sum domain.SeriesRatingSummary
+		var avg sql.NullFloat64
+		if err := rows.Scan(&sum.SeriesID, &sum.RatingCount, &avg); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if sum.RatingCount > 0 && avg.Valid {
+			v := avg.Float64
+			sum.AverageRating = &v
+		}
+		out[sum.SeriesID] = sum
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if userID > 0 {
+		rows, err := s.db.QueryContext(ctx,
+			`SELECT series_id, stars FROM series_ratings
+			 WHERE user_id=$1 AND series_id = ANY($2)`, userID, pq.Array(seriesIDs))
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			var stars int
+			if err := rows.Scan(&id, &stars); err != nil {
+				return nil, err
+			}
+			sum := out[id]
+			sum.SeriesID = id
+			st := stars
+			sum.UserStars = &st
+			out[id] = sum
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// --- Comment likes (one row per user per comment) ---
+
+func (s *Store) SetCommentLike(ctx context.Context, userID, commentID int64) error {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM comments WHERE id=$1)`, commentID,
+	).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return domain.ErrNotFound("Comment")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO comment_likes (user_id, comment_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+		userID, commentID)
+	return err
+}
+
+func (s *Store) RemoveCommentLike(ctx context.Context, userID, commentID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM comment_likes WHERE user_id=$1 AND comment_id=$2`, userID, commentID)
+	return err
+}
+
+func (s *Store) CommentLikeStatus(ctx context.Context, commentID, userID int64) (domain.CommentLikeStatus, error) {
+	out := domain.CommentLikeStatus{CommentID: commentID}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM comment_likes WHERE comment_id=$1`, commentID,
+	).Scan(&out.LikeCount); err != nil {
+		return out, err
+	}
+	if userID > 0 {
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM comment_likes WHERE comment_id=$1 AND user_id=$2)`, commentID, userID,
+		).Scan(&out.Liked); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
 }

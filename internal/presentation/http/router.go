@@ -32,6 +32,7 @@ func (h *Handlers) Router() http.Handler {
 		r.With(h.requireAuth).Get("/auth/me", h.Me)
 
 		// Public catalog.
+		r.With(h.optionalAuth).Get("/series/{id}/ratings", h.GetSeriesRatings)
 		r.With(h.optionalAuth).Get("/series", h.ListSeries)
 		r.With(h.optionalAuth).Get("/series/{id}", h.GetSeries)
 		r.With(h.optionalAuth).Get("/series/{id}/episodes", h.ListEpisodes)
@@ -57,6 +58,9 @@ func (h *Handlers) Router() http.Handler {
 			r.Delete("/bookmarks/{id}", h.Unbookmark)
 			r.Post("/likes/{id}", h.Like)
 			r.Delete("/likes/{id}", h.Unlike)
+			r.Post("/series/{id}/ratings", h.RateSeries)
+			r.Post("/comments/{id}/like", h.LikeComment)
+			r.Delete("/comments/{id}/like", h.UnlikeComment)
 			r.Post("/episodes/{id}/comments", h.AddComment)
 		})
 

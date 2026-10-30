@@ -61,18 +61,23 @@ type Genre struct {
 }
 
 type Series struct {
-	ID               int64     `json:"id"`
-	Title            string    `json:"title"`
-	Description      string    `json:"description"`
-	Tagline          string    `json:"tagline"`
-	CoverURL         *string   `json:"cover_url"`
-	Status           string    `json:"status"`
-	TotalEpisode     int       `json:"total_episode"`
-	FreeEpisodeCount int       `json:"free_episode_count"`
-	Rating           float64   `json:"rating"`
-	Genres           []Genre   `json:"genres,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               int64   `json:"id"`
+	Title            string  `json:"title"`
+	Description      string  `json:"description"`
+	Tagline          string  `json:"tagline"`
+	CoverURL         *string `json:"cover_url"`
+	Status           string  `json:"status"`
+	TotalEpisode     int     `json:"total_episode"`
+	FreeEpisodeCount int     `json:"free_episode_count"`
+	Rating           float64 `json:"rating"`
+	// Computed from series_ratings (never fabricated): nil average + 0 count
+	// means no user has rated yet. UserRating is set only for the caller.
+	AverageRating *float64  `json:"average_rating"`
+	RatingCount   int       `json:"rating_count"`
+	UserRating    *int      `json:"user_rating,omitempty"`
+	Genres        []Genre   `json:"genres,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Episode struct {
@@ -148,7 +153,25 @@ type Comment struct {
 	EpisodeID int64     `json:"episode_id"`
 	Body      string    `json:"body"`
 	UserName  string    `json:"user_name,omitempty"`
+	LikeCount int       `json:"like_count"`
+	LikedByMe bool      `json:"liked_by_me"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// SeriesRatingSummary is the computed rating state of one series.
+// AverageRating is nil (not 0) when nobody has rated yet.
+type SeriesRatingSummary struct {
+	SeriesID      int64    `json:"series_id"`
+	AverageRating *float64 `json:"average_rating"`
+	RatingCount   int      `json:"rating_count"`
+	UserStars     *int     `json:"user_stars,omitempty"`
+}
+
+// CommentLikeStatus is the real like state of one comment for one caller.
+type CommentLikeStatus struct {
+	CommentID int64 `json:"comment_id"`
+	Liked     bool  `json:"liked"`
+	LikeCount int   `json:"like_count"`
 }
 
 type RewardTask struct {

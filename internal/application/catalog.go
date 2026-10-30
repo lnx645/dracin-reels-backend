@@ -63,6 +63,30 @@ func (s *CatalogService) ListEpisodes(ctx context.Context, seriesID int64, userI
 	return applyLock(ctx, s.store, series, eps, userID, isAdmin), nil
 }
 
+// AttachRatings fills the computed rating fields of each series in place
+// (one aggregate query for the whole list; no per-series N+1).
+func (s *CatalogService) AttachRatings(ctx context.Context, list []domain.Series, userID int64) error {
+	if len(list) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(list))
+	for _, ser := range list {
+		ids = append(ids, ser.ID)
+	}
+	summaries, err := s.store.SeriesRatingsBulk(ctx, ids, userID)
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if sum, ok := summaries[list[i].ID]; ok {
+			list[i].AverageRating = sum.AverageRating
+			list[i].RatingCount = sum.RatingCount
+			list[i].UserRating = sum.UserStars
+		}
+	}
+	return nil
+}
+
 // GetEpisode returns one episode, hiding video_url when locked (rule 11).
 func (s *CatalogService) GetEpisode(ctx context.Context, id int64, userID int64, isAdmin bool) (*domain.Episode, error) {
 	ep, err := s.store.GetEpisode(ctx, id)

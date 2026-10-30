@@ -73,7 +73,13 @@ type Store interface {
 	ListBookmarks(ctx context.Context, userID int64) ([]domain.Series, error)
 	SetLike(ctx context.Context, userID, episodeID int64) error
 	RemoveLike(ctx context.Context, userID, episodeID int64) error
-	ListComments(ctx context.Context, episodeID int64, page, limit int) ([]domain.Comment, int, error)
+	ListComments(ctx context.Context, episodeID, userID int64, page, limit int) ([]domain.Comment, int, error)
+	SetSeriesRating(ctx context.Context, userID, seriesID int64, stars int) error
+	SeriesRatingSummary(ctx context.Context, seriesID, userID int64) (domain.SeriesRatingSummary, error)
+	SeriesRatingsBulk(ctx context.Context, seriesIDs []int64, userID int64) (map[int64]domain.SeriesRatingSummary, error)
+	SetCommentLike(ctx context.Context, userID, commentID int64) error
+	RemoveCommentLike(ctx context.Context, userID, commentID int64) error
+	CommentLikeStatus(ctx context.Context, commentID, userID int64) (domain.CommentLikeStatus, error)
 	CreateComment(ctx context.Context, c *domain.Comment) error
 
 	// Reward tasks

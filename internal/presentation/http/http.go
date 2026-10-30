@@ -18,13 +18,21 @@ const (
 	ctxRole   ctxKey = "role"
 )
 
+// TranscodeEnqueuer is the HLS worker entry point (implemented by
+// internal/infrastructure/transcode). It is an interface here so the
+// presentation layer does not import infrastructure.
+type TranscodeEnqueuer interface {
+	Enqueue(episodeID int64, sourceRel, sourceDisk string) bool
+}
+
 // Handlers bundles the usecases.
 type Handlers struct {
-	Auth     *application.AuthService
-	Catalog  *application.CatalogService
-	Wallet   *application.WalletService
-	Social   *application.SocialService
-	MediaDir string
+	Auth       *application.AuthService
+	Catalog    *application.CatalogService
+	Wallet     *application.WalletService
+	Social     *application.SocialService
+	MediaDir   string
+	Transcoder TranscodeEnqueuer
 }
 
 func userFromCtx(ctx context.Context) (int64, string) {

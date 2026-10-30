@@ -33,6 +33,8 @@ type Store interface {
 	GetEpisode(ctx context.Context, id int64) (*domain.Episode, error)
 	CreateEpisode(ctx context.Context, e *domain.Episode) error
 	UpdateEpisode(ctx context.Context, e *domain.Episode) error
+	UpdateEpisodeTranscode(ctx context.Context, id int64, hlsURL *string, status string, errMsg *string) error
+	ListProcessingEpisodes(ctx context.Context) ([]domain.Episode, error)
 	DeleteEpisode(ctx context.Context, id int64) error
 
 	// Wallet & unlock & check-in (each atomic inside the repository)

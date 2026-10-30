@@ -155,3 +155,15 @@ di lokasi `/dracin-api/` → `http://127.0.0.1:8100/`.
 URL publik: `http://103.147.33.11:8095/dracin-api/`
 (mis. `.../dracin-api/health`, `.../dracin-api/api/v1/series`).
 File deploy: `deploy/` (service systemd + snippet nginx).
+
+## HLS adaptive playback
+- Upload video starts an async single-worker transcode: 360p/480p/720p
+  renditions (never upscaled) + master.m3u8 under media/episodes/hls_<id>/.
+- Episode fields: hls_url (null until ready), transcode_status
+  (none/processing/ready/failed), transcode_error. The player uses hls_url
+  when ready, the original MP4 as fallback. A transcode failure never
+  fabricates an HLS URL.
+- Requires ffmpeg + ffprobe on PATH (AlmaLinux: EPEL + RPM Fusion,
+  `dnf install -y ffmpeg --allowerasing`); override with FFMPEG_BIN /
+  FFPROBE_BIN. VPS guard: one job at a time, ffmpeg -threads 2, output
+  published by renaming a temp dir into place only on full success.

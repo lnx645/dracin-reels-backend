@@ -280,17 +280,19 @@ func (s *Store) DeleteSeries(ctx context.Context, id int64) error {
 
 func scanEpisode(rows *sql.Rows) (domain.Episode, error) {
 	var e domain.Episode
-	var sub, thumb sql.NullString
+	var sub, thumb, hls, terr sql.NullString
 	err := rows.Scan(&e.ID, &e.SeriesID, &e.Number, &e.Title, &e.Description,
 		&e.VideoURL, &sub, &e.DurationSeconds, &e.CoinPrice, &e.Status, &thumb,
-		&e.CreatedAt, &e.UpdatedAt)
+		&hls, &e.TranscodeStatus, &terr, &e.CreatedAt, &e.UpdatedAt)
 	e.SubtitleURL = strPtr(sub)
 	e.ThumbnailURL = strPtr(thumb)
+	e.HLSURL = strPtr(hls)
+	e.TranscodeError = strPtr(terr)
 	return e, err
 }
 
 const episodeCols = `id, series_id, number, title, description, video_url,
-	subtitle_url, duration_seconds, coin_price, status, thumbnail_url, created_at, updated_at`
+	subtitle_url, duration_seconds, coin_price, status, thumbnail_url, hls_url, transcode_status, transcode_error, created_at, updated_at`
 
 func (s *Store) ListEpisodesBySeries(ctx context.Context, seriesID int64, onlyPublished bool) ([]domain.Episode, error) {
 	q := `SELECT ` + episodeCols + ` FROM episodes WHERE series_id=$1`
@@ -317,17 +319,19 @@ func (s *Store) ListEpisodesBySeries(ctx context.Context, seriesID int64, onlyPu
 
 func (s *Store) GetEpisode(ctx context.Context, id int64) (*domain.Episode, error) {
 	ep := &domain.Episode{}
-	var sub, thumb sql.NullString
+	var sub, thumb, hls, terr sql.NullString
 	err := s.db.QueryRowContext(ctx,
 		`SELECT `+episodeCols+` FROM episodes WHERE id=$1`, id,
 	).Scan(&ep.ID, &ep.SeriesID, &ep.Number, &ep.Title, &ep.Description,
 		&ep.VideoURL, &sub, &ep.DurationSeconds, &ep.CoinPrice, &ep.Status, &thumb,
-		&ep.CreatedAt, &ep.UpdatedAt)
+		&hls, &ep.TranscodeStatus, &terr, &ep.CreatedAt, &ep.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	ep.SubtitleURL = strPtr(sub)
 	ep.ThumbnailURL = strPtr(thumb)
+	ep.HLSURL = strPtr(hls)
+	ep.TranscodeError = strPtr(terr)
 	return ep, nil
 }
 
@@ -350,6 +354,36 @@ func (s *Store) UpdateEpisode(ctx context.Context, e *domain.Episode) error {
 		nullString(e.SubtitleURL), e.DurationSeconds, e.CoinPrice, e.Status,
 		nullString(e.ThumbnailURL), e.ID)
 	return err
+}
+
+// UpdateEpisodeTranscode writes ONLY the HLS fields, so the worker never
+// clobbers an admin's concurrent title/price/duration edit (a full-entity
+// round-trip would). On failure the caller passes the previous hlsURL
+// through, so a failed re-transcode never removes a working HLS set.
+func (s *Store) UpdateEpisodeTranscode(ctx context.Context, id int64, hlsURL *string, status string, errMsg *string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE episodes SET hls_url=$2, transcode_status=$3, transcode_error=$4, updated_at=now() WHERE id=$1`,
+		id, nullString(hlsURL), status, nullString(errMsg))
+	return err
+}
+
+// ListProcessingEpisodes returns episodes left "processing" by a restart,
+// so the worker can re-queue them instead of leaving them stuck.
+func (s *Store) ListProcessingEpisodes(ctx context.Context) ([]domain.Episode, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+episodeCols+` FROM episodes WHERE transcode_status='processing' ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.Episode{}
+	for rows.Next() {
+		ep, err := scanEpisode(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ep)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) DeleteEpisode(ctx context.Context, id int64) error {

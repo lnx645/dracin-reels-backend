@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/lnx645/dracin-reels-backend/internal/application"
 	"github.com/lnx645/dracin-reels-backend/internal/infrastructure/database"
 	"github.com/lnx645/dracin-reels-backend/internal/infrastructure/postgres"
+	"github.com/lnx645/dracin-reels-backend/internal/infrastructure/transcode"
 	presentation "github.com/lnx645/dracin-reels-backend/internal/presentation/http"
 )
 
@@ -81,12 +83,21 @@ func main() {
 	}
 
 	store := postgres.NewStore(db)
+
+	// HLS pipeline: single async worker (see internal/infrastructure/transcode).
+	transcoder := transcode.New(store, mediaDir)
+	transcoder.Start()
+	if err := transcoder.RequeueProcessing(context.Background()); err != nil {
+		log.Printf("hls requeue: %v", err)
+	}
+
 	h := &presentation.Handlers{
-		Auth:     application.NewAuthService(store, jwtSecret),
-		Catalog:  application.NewCatalogService(store),
-		Wallet:   application.NewWalletService(store),
-		Social:   application.NewSocialService(store),
-		MediaDir: mediaDir,
+		Auth:       application.NewAuthService(store, jwtSecret),
+		Catalog:    application.NewCatalogService(store),
+		Wallet:     application.NewWalletService(store),
+		Social:     application.NewSocialService(store),
+		MediaDir:   mediaDir,
+		Transcoder: transcoder,
 	}
 
 	log.Printf("dracin-reels-backend listening on :%s (media dir: %s)", port, mediaDir)

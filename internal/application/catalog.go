@@ -181,6 +181,11 @@ func (s *CatalogService) UpdateEpisode(ctx context.Context, ep *domain.Episode) 
 	return s.store.UpdateEpisode(ctx, ep)
 }
 
+// UpdateEpisodeTranscode writes only the HLS fields (see postgres store).
+func (s *CatalogService) UpdateEpisodeTranscode(ctx context.Context, id int64, hlsURL *string, status string, errMsg *string) error {
+	return s.store.UpdateEpisodeTranscode(ctx, id, hlsURL, status, errMsg)
+}
+
 func (s *CatalogService) DeleteEpisode(ctx context.Context, id int64) error {
 	return s.store.DeleteEpisode(ctx, id)
 }

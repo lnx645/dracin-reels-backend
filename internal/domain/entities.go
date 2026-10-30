@@ -86,6 +86,9 @@ type Episode struct {
 	CoinPrice       int       `json:"coin_price"`
 	Status          string    `json:"status"`
 	ThumbnailURL    *string   `json:"thumbnail_url"`
+	HLSURL          *string   `json:"hls_url"`
+	TranscodeStatus string    `json:"transcode_status"`
+	TranscodeError  *string   `json:"transcode_error,omitempty"`
 	Locked          bool      `json:"locked"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`

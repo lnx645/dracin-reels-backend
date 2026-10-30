@@ -238,11 +238,31 @@ func (h *Handlers) uploadEpisodeField(w http.ResponseWriter, r *http.Request, ki
 		writeErr(w, err)
 		return
 	}
+	// Video uploads start an async HLS transcode (single worker, see
+	// internal/infrastructure/transcode). The upload itself never waits:
+	// the player uses the original MP4 until hls_url is ready.
+	transcodeStatus := ""
+	if kindName == "video" && h.Transcoder != nil {
+		if err := h.Catalog.UpdateEpisodeTranscode(r.Context(), id, nil, "processing", nil); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if h.Transcoder.Enqueue(id, rel, diskPath) {
+			transcodeStatus = "processing"
+		} else {
+			msg := "antrean transcode penuh, coba upload ulang videonya"
+			_ = h.Catalog.UpdateEpisodeTranscode(r.Context(), id, nil, "failed", &msg)
+			transcodeStatus = "failed"
+		}
+	}
 	resp := map[string]interface{}{
 		"episode_id": id, uploadKinds[kindName].field: rel, "url": rel,
 	}
 	if kindName == "video" {
 		resp["duration_seconds"] = ep.DurationSeconds
+		if transcodeStatus != "" {
+			resp["transcode_status"] = transcodeStatus
+		}
 	}
 	writeOK(w, http.StatusOK, resp, nil)
 }
@@ -272,6 +292,14 @@ func (h *Handlers) MediaHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || info.IsDir() {
 		http.NotFound(w, r)
 		return
+	}
+	// Explicit HLS content types: some players reject a playlist served
+	// as text/plain from content sniffing.
+	switch strings.ToLower(filepath.Ext(full)) {
+	case ".m3u8":
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	case ".ts":
+		w.Header().Set("Content-Type", "video/mp2t")
 	}
 	http.ServeFile(w, r, full)
 }

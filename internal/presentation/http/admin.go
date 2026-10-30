@@ -113,6 +113,11 @@ func (h *Handlers) AdminUpdateEpisode(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	existing, err := h.Catalog.GetEpisode(r.Context(), id, 0, true)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	e := &domain.Episode{ID: id, SeriesID: req.SeriesID, Number: req.Number, Title: req.Title,
 		Description: req.Description, VideoURL: req.VideoURL, SubtitleURL: req.SubtitleURL,
 		DurationSeconds: req.DurationSeconds, CoinPrice: req.CoinPrice, Status: req.Status,
@@ -120,6 +125,12 @@ func (h *Handlers) AdminUpdateEpisode(w http.ResponseWriter, r *http.Request) {
 	if err := h.Catalog.UpdateEpisode(r.Context(), e); err != nil {
 		writeErr(w, err)
 		return
+	}
+	// A changed video_url invalidates any previous HLS set: the old
+	// renditions belong to the old file and must never be served for the
+	// new one. An unchanged URL keeps its HLS state.
+	if existing.VideoURL != req.VideoURL {
+		_ = h.Catalog.UpdateEpisodeTranscode(r.Context(), id, nil, "none", nil)
 	}
 	writeOK(w, http.StatusOK, e, nil)
 }

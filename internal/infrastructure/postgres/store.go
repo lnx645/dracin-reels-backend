@@ -18,9 +18,9 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 func (s *Store) CreateUser(ctx context.Context, u *domain.User) error {
 	return s.db.QueryRowContext(ctx,
 		`INSERT INTO users (name, email, password_hash, avatar_url, role)
-		 VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
+		 VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at, is_active`,
 		u.Name, u.Email, u.PasswordHash, nullString(u.AvatarURL), u.Role,
-	).Scan(&u.ID, &u.CreatedAt)
+	).Scan(&u.ID, &u.CreatedAt, &u.IsActive)
 	// NOTE: no wallet row is created here; GetWallet creates a zero wallet
 	// on demand, so registration never fails on wallet setup.
 }
@@ -29,9 +29,9 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*domain.User,
 	u := &domain.User{}
 	var avatar sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, name, email, password_hash, avatar_url, role, created_at
+		`SELECT id, name, email, password_hash, avatar_url, role, is_active, created_at
 		 FROM users WHERE email = $1`, email,
-	).Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &avatar, &u.Role, &u.CreatedAt)
+	).Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &avatar, &u.Role, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -43,9 +43,9 @@ func (s *Store) GetUserByID(ctx context.Context, id int64) (*domain.User, error)
 	u := &domain.User{}
 	var avatar sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, name, email, password_hash, avatar_url, role, created_at
+		`SELECT id, name, email, password_hash, avatar_url, role, is_active, created_at
 		 FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &avatar, &u.Role, &u.CreatedAt)
+	).Scan(&u.ID, &u.Name, &u.Email, &u.PasswordHash, &avatar, &u.Role, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

@@ -31,6 +31,7 @@ type Handlers struct {
 	Catalog    *application.CatalogService
 	Wallet     *application.WalletService
 	Social     *application.SocialService
+	Admin      *application.AdminService
 	MediaDir   string
 	Transcoder TranscodeEnqueuer
 }
@@ -132,10 +133,19 @@ func (h *Handlers) requireAuth(next http.Handler) http.Handler {
 
 func (h *Handlers) requireAdmin(next http.Handler) http.Handler {
 	return h.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, role := userFromCtx(r.Context())
+		id, role := userFromCtx(r.Context())
 		if role != domain.RoleAdmin {
 			writeErr(w, domain.ErrForbidden("Hanya admin yang boleh melakukan ini."))
 			return
+		}
+		// Deactivation takes effect immediately for admin routes
+		// instead of waiting for the JWT to expire. (Nil Auth only
+		// happens in unit tests that bypass middleware.)
+		if h.Auth != nil {
+			if active, err := h.Auth.UserIsActive(r.Context(), id); err != nil || !active {
+				writeErr(w, domain.ErrForbidden("Akun admin ini tidak aktif."))
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	}))

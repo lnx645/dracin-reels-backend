@@ -78,6 +78,13 @@ func (h *Handlers) Router() http.Handler {
 			r.Post("/admin/coin-packages", h.AdminCreateCoinPackage)
 			r.Put("/admin/coin-packages/{id}", h.AdminUpdateCoinPackage)
 			r.Delete("/admin/coin-packages/{id}", h.AdminDeleteCoinPackage)
+			// Admin panel: dashboard, user/member management, full ledger.
+			r.Get("/admin/stats", h.AdminStats)
+			r.Get("/admin/users", h.AdminListUsers)
+			r.Get("/admin/users/{id}", h.AdminGetUser)
+			r.Put("/admin/users/{id}", h.AdminUpdateUser)
+			r.Get("/admin/vip-subscriptions", h.AdminListVIPSubscriptions)
+			r.Get("/admin/transactions", h.AdminListTransactions)
 			// Admin media uploads (multipart, field name "file").
 			r.Post("/admin/series/{id}/cover", h.UploadSeriesCover)
 			r.Post("/admin/episodes/{id}/video", h.UploadEpisodeVideo)

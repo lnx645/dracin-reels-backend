@@ -96,6 +96,7 @@ func main() {
 		Catalog:    application.NewCatalogService(store),
 		Wallet:     application.NewWalletService(store),
 		Social:     application.NewSocialService(store),
+		Admin:      application.NewAdminService(store),
 		MediaDir:   mediaDir,
 		Transcoder: transcoder,
 	}

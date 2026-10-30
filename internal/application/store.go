@@ -15,6 +15,14 @@ type Store interface {
 	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetUserByID(ctx context.Context, id int64) (*domain.User, error)
 
+	// Admin panel (admin role only; see application.AdminService).
+	ListAdminUsers(ctx context.Context, search string, page, limit int) ([]AdminUserView, int, error)
+	GetAdminUser(ctx context.Context, id int64) (*AdminUserView, error)
+	UpdateAdminUser(ctx context.Context, id int64, role *string, isActive *bool) (*AdminUserView, error)
+	ListAdminVIPSubscriptions(ctx context.Context, status string, page, limit int) ([]AdminVIPView, int, error)
+	ListAdminTransactions(ctx context.Context, userID int64, txType string, page, limit int) ([]AdminTransactionView, int, error)
+	AdminStats(ctx context.Context) (*AdminStats, error)
+
 	// Genres
 	ListGenres(ctx context.Context) ([]domain.Genre, error)
 	CreateGenre(ctx context.Context, g *domain.Genre) error

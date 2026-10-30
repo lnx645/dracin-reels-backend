@@ -51,6 +51,9 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
 		return "", nil, domain.ErrUnauthorized("Email atau kata sandi salah.")
 	}
+	if !u.IsActive {
+		return "", nil, domain.ErrForbidden("Akun ini telah dinonaktifkan oleh admin.")
+	}
 	claims := jwt.MapClaims{
 		"sub":  u.ID,
 		"role": u.Role,
@@ -63,6 +66,17 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	}
 	u.PasswordHash = ""
 	return token, u, nil
+}
+
+// UserIsActive reports whether the user exists and is active. Admin
+// middleware uses it so deactivation takes effect immediately instead
+// of waiting for the JWT (7 days) to expire.
+func (s *AuthService) UserIsActive(ctx context.Context, id int64) (bool, error) {
+	u, err := s.store.GetUserByID(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return u.IsActive, nil
 }
 
 func (s *AuthService) Me(ctx context.Context, id int64) (*domain.User, error) {

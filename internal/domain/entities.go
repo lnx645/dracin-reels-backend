@@ -49,6 +49,7 @@ type User struct {
 	Email        string    `json:"email"`
 	AvatarURL    *string   `json:"avatar_url"`
 	Role         string    `json:"role"`
+	IsActive     bool      `json:"is_active"`
 	CreatedAt    time.Time `json:"created_at"`
 	PasswordHash string    `json:"-"`
 }
